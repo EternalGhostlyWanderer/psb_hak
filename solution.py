@@ -126,14 +126,23 @@ def main() -> None:
         elapsed = time.monotonic() - START
         if elapsed > HARD_LIMIT:
             return                              # не успели — останется безопасный FALLBACK
-        try:
-            # Поджимает время — убираем второй запрос на самопроверку: полный
-            # submission.csv важнее, чем идеальные первые ответы.
-            result = assistant.answer(question, fast=elapsed > SOFT_LIMIT)
-            text = result.answer
-        except Exception as exc:  # noqa: BLE001 — один сбой не должен ронять весь прогон
-            print(f"Вопрос {qid}: {type(exc).__name__}: {str(exc)[:150]}", file=sys.stderr)
-            text = FALLBACK
+        text = FALLBACK
+        # Две попытки на вопрос: запасной ответ = 0 баллов, поэтому при сбое API
+        # (например, серия ошибок 429) пробуем ещё раз, пока есть время.
+        for attempt in range(2):
+            elapsed = time.monotonic() - START
+            if elapsed > HARD_LIMIT - 30:
+                break
+            try:
+                # Поджимает время — убираем второй запрос на самопроверку: полный
+                # submission.csv важнее, чем идеальные первые ответы.
+                result = assistant.answer(question, fast=elapsed > SOFT_LIMIT or attempt > 0)
+                text = result.answer
+                break
+            except Exception as exc:  # noqa: BLE001 — один сбой не должен ронять весь прогон
+                print(f"Вопрос {qid}, попытка {attempt + 1}: {type(exc).__name__}: "
+                      f"{str(exc)[:150]}", file=sys.stderr)
+                time.sleep(3)
         with lock:
             answers[qid] = text
             if len(answers) % 10 == 0 or len(answers) == len(questions):
