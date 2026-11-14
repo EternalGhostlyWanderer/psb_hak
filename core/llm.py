@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import re
 import threading
 import time
@@ -124,7 +125,7 @@ class LLMClient:
 
     # ---------- запросы ----------
 
-    def _post(self, path: str, key: str, payload: dict, retries: int = 3) -> dict:
+    def _post(self, path: str, key: str, payload: dict, retries: int = 4) -> dict:
         if not self.available:
             raise LLMError("Модель не подключена: нет LLM_BASE_URL / LLM_API_KEY")
         kind = path.strip("/")
@@ -150,9 +151,26 @@ class LLMClient:
             except (httpx.HTTPError, ValueError) as exc:
                 # 429 / 5xx / таймаут — временные сбои: ждём и пробуем ещё (регламент, п. 9).
                 last = exc
-                time.sleep(2.0 * (attempt + 1))
+                if attempt == retries - 1:
+                    break
+                time.sleep(self._retry_pause(exc, attempt))
         self._record(kind, started, False)
-        raise LLMError(f"API не ответил за {retries} попытки: {type(last).__name__}: {last}")
+        raise LLMError(f"API не ответил после {retries} попыток: {type(last).__name__}: {last}")
+
+    def _retry_pause(self, exc: Exception, attempt: int) -> float:
+        """Пауза перед повтором. При 429 («слишком много запросов») ждём дольше и
+        со случайной добавкой: 16 потоков не должны повторять запрос все разом."""
+        pause = 2.0 * (attempt + 1)
+        response = getattr(exc, "response", None)
+        if response is not None and response.status_code == 429:
+            try:
+                pause = float(response.headers.get("retry-after", ""))
+            except ValueError:
+                pause = 4.0 * (attempt + 1)
+            pause = min(max(pause, 1.0), 20.0) + random.uniform(0, 2)
+        if self.deadline is not None:
+            pause = max(0.0, min(pause, self.deadline - time.monotonic()))
+        return pause
 
     def generate_stream(self, messages: list[dict]) -> Iterator[str]:
         """Ответ по кускам, по мере генерации — чтобы сайт показывал текст сразу.
