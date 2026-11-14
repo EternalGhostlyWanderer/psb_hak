@@ -74,7 +74,7 @@ def ambiguous_party(text: str) -> bool:
 
 
 # Документ короче этого порога попадает в контекст модели целиком (см. search()).
-SMALL_DOC_FULL_CHARS = 4500
+SMALL_DOC_FULL_CHARS = 6000   # ТК ст. 70 и ст. 152 целиком
 
 YEAR_RE = re.compile(r"\b(20[12]\d)\b")
 

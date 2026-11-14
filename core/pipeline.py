@@ -140,12 +140,24 @@ class LegalAssistant:
     def __init__(self, chunks: list[Chunk], llm: LLMClient | None = None):
         self.llm = llm or LLMClient()
         use_dense = config.USE_DENSE and self.llm.available
-        self.searcher = HybridSearcher(chunks, embed_fn=self.llm.embed if use_dense else None)
+        if config.ALL_COMPANY_DOCS:
+            # Документы компании идут в контекст целиком, искать нужно только по законам.
+            self.company_chunks = [c for c in chunks if c.doc_type != "закон"]
+            search_chunks = [c for c in chunks if c.doc_type == "закон"]
+        else:
+            self.company_chunks, search_chunks = [], chunks
+        self.searcher = HybridSearcher(search_chunks, embed_fn=self.llm.embed if use_dense else None)
         self.dense_ready = self.searcher.build_dense_index()
 
     # ---------- поиск ----------
 
     def retrieve(self, question: str, history: list[dict]) -> list[Chunk]:
+        """Найденные статьи законов + все документы компании целиком (см. config)."""
+        found = self._search(question, history)
+        seen = {c.chunk_id for c in found}
+        return found + [c for c in self.company_chunks if c.chunk_id not in seen]
+
+    def _search(self, question: str, history: list[dict]) -> list[Chunk]:
         # В диалоге контрагент и номер договора часто названы в прошлых репликах
         # («А за сколько дней проверить качество?») — ищем по истории + вопросу.
         context = " ".join(t["content"] for t in history[-4:])
