@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Юридический ассистент</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <!-- На узком экране история диалогов спрятана и открывается этой кнопкой -->
+    <button id="toggle-sidebar" class="ghost only-narrow" type="button" aria-controls="sidebar" aria-expanded="false">Диалоги</button>
+    <div class="brand"><span class="brand-mark" aria-hidden="true">§</span><span class="brand-name">Юридический ассистент</span></div>
+    <span id="health" class="health">проверяю подключение…</span>
+    <button id="show-docs" class="ghost" type="button" aria-label="Документы базы"><span class="wide-only">Документы базы</span><span class="narrow-only">Документы</span></button>
+  </header>
+
+  <main id="layout">
+    <!-- Левая колонка: история диалогов (хранится в браузере) -->
+    <nav id="sidebar" aria-label="История диалогов">
+      <button id="new-chat" class="primary" type="button">Новый диалог</button>
+      <p class="label">История</p>
+      <ul id="dialogs"></ul>
+      <p class="hint">История хранится только в этом браузере.</p>
+    </nav>
+
+    <!-- Центр: чат -->
+    <section id="chat" aria-label="Диалог">
+      <div id="messages" aria-live="polite"></div>
+      <form id="ask">
+        <textarea id="question" rows="1" placeholder="Вопрос по документам базы" aria-label="Вопрос" required></textarea>
+        <button id="send" class="primary" type="submit">Отправить</button>
+      </form>
+      <p class="hint composer-hint">Enter — отправить, Shift+Enter — новая строка. Ответ строится только по документам базы.</p>
+    </section>
+
+    <!-- Правая колонка: документ с подтверждающим фрагментом. Появляется по клику на источник -->
+    <aside id="viewer" aria-label="Документ" hidden>
+      <div class="viewer-head">
+        <div>
+          <p class="label" id="viewer-kind">Документ</p>
+          <h2 id="viewer-title"></h2>
+        </div>
+        <button id="viewer-close" class="ghost" type="button">Закрыть</button>
+      </div>
+      <div id="viewer-body"></div>
+    </aside>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

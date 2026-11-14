@@ -1,0 +1,41 @@
+"""Настройки решения в одном месте.
+
+Зачем отдельный файл: на платформе нельзя задать свои переменные окружения,
+поэтому переключатели для экспериментов между сабмитами меняются здесь, в коде.
+Локально любую настройку можно переопределить переменной окружения LA_<ИМЯ>.
+"""
+from __future__ import annotations
+
+import os
+
+
+def _flag(name: str, default: bool) -> bool:
+    value = os.getenv("LA_" + name, "").strip().lower()
+    return default if not value else value in ("1", "true", "yes", "on")
+
+
+def _int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv("LA_" + name, ""))
+    except ValueError:
+        return default
+
+
+# Сколько чанков отдаём модели (плюс малые документы целиком, см. search.py).
+# Своё имя, а не TOP_K платформы: там значение подобрано под учебный пример (4).
+TOP_K = _int("TOP_K", 8)
+
+# Поиск по смыслу через эмбеддинги bge-m3. При ошибке API сам отключается.
+USE_DENSE = _flag("USE_DENSE", True)
+
+# Реранкер Qwen3: пересортировка кандидатов. Выключен, пока не сравнили сабмитами.
+USE_RERANKER = _flag("USE_RERANKER", False)
+RERANK_CANDIDATES = _int("RERANK_CANDIDATES", 24)
+
+# Вторая модельная проверка черновика. Стоит +1–2 запроса на вопрос.
+# Бесплатная программная сверка чисел и пунктов работает всегда, независимо от флага.
+USE_LLM_SELF_CHECK = _flag("USE_LLM_SELF_CHECK", True)
+
+# Минимум токенов на ответ. Если модель «думающая», рассуждения тоже тратят лимит,
+# и при MAX_TOKENS=1024 от платформы ответ может обрезаться или прийти пустым.
+MIN_ANSWER_TOKENS = _int("MIN_ANSWER_TOKENS", 2000)

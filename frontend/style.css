@@ -1,0 +1,180 @@
+/* Оформление сайта. Раскладка: шапка и три колонки — история, чат, документ.
+   Все цвета заданы переменными: тёмная тема меняет только их, а не правила ниже. */
+
+:root {
+  --bg: #f3f4f1;          /* фон страницы */
+  --surface: #ffffff;     /* карточки, поля, колонка документа */
+  --line: #d9ddd6;
+  --text: #1b2220;
+  --muted: #5c6661;
+  --accent: #1f5f5b;      /* кнопки и ссылки на источники */
+  --accent-ink: #ffffff;
+  --accent-soft: #e2efed; /* реплика пользователя, выбранный диалог */
+  --marker: #ffe98a;      /* «маркер» на подтверждающем фрагменте документа */
+  --ok: #1c7a49;
+  --warn: #8f5400;  --warn-bg: #fbefd6;   /* частичный ответ: чего нет в базе */
+  --bad: #a3312a;   --bad-bg: #f9e4e1;    /* отказ, ошибка, «утратил силу» */
+  --ui: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Документы набраны шрифтом с засечками: так привычнее читать договоры и законы. */
+  --doc: Georgia, "PT Serif", "Times New Roman", serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121716; --surface: #1a2120; --line: #2c3634; --text: #e4e9e6; --muted: #98a39f;
+    --accent: #6fc2b8; --accent-ink: #0d1413; --accent-soft: #1d302e; --marker: #5c4f10;
+    --ok: #62c993; --warn: #f0b25a; --warn-bg: #33270f; --bad: #f08a80; --bad-bg: #3a1c19;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+       font: 15px/1.5 var(--ui); }
+h2 { margin: 0; font-size: 16px; line-height: 1.3; }
+p { margin: 0; }
+.label { font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.hint { font-size: 12px; color: var(--muted); }
+
+/* ---------- кнопки ---------- */
+button { font: inherit; cursor: pointer; border-radius: 6px; border: 1px solid var(--line);
+         background: var(--surface); color: var(--text); padding: 6px 12px; }
+button:hover { border-color: var(--accent); }
+button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.ghost { background: transparent; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- шапка ---------- */
+.topbar { display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+          background: var(--surface); border-bottom: 1px solid var(--line); }
+.brand { font-weight: 600; font-size: 16px; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.brand-mark { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 6px;
+              background: var(--accent); color: var(--accent-ink); font-family: var(--doc); font-size: 17px; }
+.health { flex: 1; min-width: 0; font-size: 13px; color: var(--muted);
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health.off { color: var(--bad); }
+.only-narrow, .narrow-only { display: none; }
+/* Подсказка в одну строку: в узком поле перенос делал её обрезанной наполовину */
+#question::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- три колонки ---------- */
+#layout { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(0, 1fr); }
+#layout.with-viewer { grid-template-columns: 250px minmax(0, 1fr) minmax(0, 0.85fr); }
+
+#sidebar { display: flex; flex-direction: column; gap: 10px; padding: 14px 12px; min-height: 0;
+           border-right: 1px solid var(--line); }
+#dialogs { list-style: none; margin: 0; padding: 0; flex: 1; overflow-y: auto;
+           display: flex; flex-direction: column; gap: 2px; }
+#dialogs li { display: flex; align-items: stretch; border-radius: 6px; }
+#dialogs li.current { background: var(--accent-soft); }
+#dialogs .open { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 7px 8px; }
+#dialogs .open span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#dialogs .open small { color: var(--muted); font-size: 12px; }
+#dialogs .del { border: 0; background: transparent; color: var(--muted); padding: 0 8px; }
+#dialogs .del:hover { color: var(--bad); }
+
+#chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+#messages { flex: 1; overflow-y: auto; padding: 20px 20px 8px; display: flex; flex-direction: column; gap: 18px; }
+#messages > * { width: 100%; max-width: 760px; margin-inline: auto; }
+
+/* ---------- пустой диалог: что это и с чего начать ---------- */
+.welcome { margin-block: auto; display: flex; flex-direction: column; gap: 12px; }
+.welcome h1 { margin: 0; font-size: 24px; line-height: 1.25; }
+.welcome p { color: var(--muted); max-width: 60ch; }
+.examples { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin-top: 6px; }
+.examples button { text-align: left; padding: 10px 12px; }
+.examples small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 2px; }
+
+/* ---------- сообщения ---------- */
+.msg.user { align-self: flex-end; width: auto !important; max-width: min(620px, 88%) !important; margin-inline: 0 !important;
+            background: var(--accent-soft); padding: 9px 13px; border-radius: 12px 12px 2px 12px;
+            white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.assistant { display: flex; flex-direction: column; gap: 8px; }
+.msg .text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 16px; line-height: 1.55; }
+.msg .text.draft { color: var(--muted); }                  /* черновик до проверки */
+
+/* Плашка вида ответа: цвет + точка + текст, чтобы смысл не держался на одном цвете */
+.status { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 12px;
+        font-weight: 600; border: 1px solid currentColor; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.full { color: var(--ok); }
+.pill.partial, .pill.clarify { color: var(--warn); background: var(--warn-bg); }
+.pill.refusal, .pill.no_llm, .pill.error { color: var(--bad); background: var(--bad-bg); }
+.status .note { color: var(--muted); }
+
+/* Чего нет в базе: выделяем прямо в тексте ответа */
+.gap { background: var(--warn-bg); color: var(--text); border-bottom: 2px solid var(--warn);
+       padding: 1px 2px; border-radius: 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+/* Ход работы, пока ответ готовится */
+.stage { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+.dots { display: inline-flex; gap: 3px; }
+.dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: blink 1.2s infinite; }
+.dots i:nth-child(2) { animation-delay: .2s; }
+.dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .dots i { animation: none; } }
+
+.sources { display: flex; flex-direction: column; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 14px; text-align: left; }
+.chip.cited { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.chip.old { text-decoration: line-through; text-decoration-color: var(--bad); }
+.sources details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.sources details .chips { margin-top: 6px; }
+.timing { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ---------- поле ввода ---------- */
+#ask { display: flex; gap: 8px; align-items: flex-end; padding: 10px 20px 4px;
+       width: 100%; max-width: 800px; margin-inline: auto; }
+#question { flex: 1; min-width: 0; font: inherit; font-size: 16px; padding: 9px 12px; resize: none; max-height: 160px;
+            border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); }
+#send { padding: 9px 16px; }
+.composer-hint { text-align: center; padding: 0 20px 10px; }
+
+/* ---------- документ ---------- */
+#viewer { display: flex; flex-direction: column; min-width: 0; min-height: 0;
+          background: var(--surface); border-left: 1px solid var(--line); }
+#viewer[hidden] { display: none; }
+.viewer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+               padding: 12px 16px; border-bottom: 1px solid var(--line); }
+#viewer-body { flex: 1; overflow-y: auto; padding: 14px 16px 24px; }
+.doc-meta { font-size: 13px; color: var(--muted); margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.tag-old { color: var(--bad); font-weight: 600; }
+.doc-section { font: 600 13px/1.4 var(--ui); margin: 16px 0 4px; color: var(--muted); }
+/* Номер пункта стоит на полях слева от текста, как в печатном документе */
+.chunk { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 10px; padding: 5px 6px; border-radius: 4px; }
+.chunk .clause { font: 12px/1.7 var(--ui); color: var(--muted); overflow-wrap: anywhere; }
+.chunk .body { font: 15px/1.6 var(--doc); white-space: pre-wrap; overflow-wrap: anywhere; }
+.chunk.hit { background: var(--marker); }
+.chunk.hit .clause { color: var(--text); font-weight: 600; }
+/* Абзац с инструкцией для ИИ, спрятанной в документе базы */
+.chunk.suspicious { box-shadow: inset 3px 0 0 var(--bad); }
+.inject-note { font: 600 12px/1.4 var(--ui); color: var(--bad); background: var(--bad-bg);
+               padding: 4px 8px; border-radius: 4px; margin: 6px 0 2px; white-space: normal; }
+.injected { background: var(--bad-bg); text-decoration: line-through; text-decoration-color: var(--bad); }
+.doc-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.doc-list button { text-align: left; }
+
+/* ---------- узкий экран: история — выезжающая панель, документ — поверх чата ---------- */
+@media (max-width: 900px) {
+  .only-narrow { display: inline-block; }
+  #layout, #layout.with-viewer { grid-template-columns: minmax(0, 1fr); position: relative; }
+  #sidebar { display: none; position: absolute; inset: 0 auto 0 0; width: min(290px, 86vw); z-index: 3;
+             background: var(--surface); box-shadow: 4px 0 18px rgb(0 0 0 / .18); }
+  #sidebar.open { display: flex; }
+  #viewer { position: absolute; inset: 0; z-index: 2; border-left: 0; }
+  #messages { padding: 16px 16px 8px; }
+  #ask { padding-inline: 16px; }
+  .composer-hint { display: none; }
+  .chunk { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+@media (max-width: 520px) {
+  /* На телефоне в шапке остаются только кнопки и знак §: полное название не влезает */
+  .health, .brand-name, .wide-only { display: none; }
+  .narrow-only { display: inline; }
+  .brand { flex: 1; }
+  .topbar { gap: 8px; padding-inline: 12px; }
+}

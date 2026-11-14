@@ -1,0 +1,16 @@
+# Запуск всего проекта одной командой:  docker compose up --build
+# Сайт откроется на http://localhost:8000
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    # Ключ и адрес модели берутся из файла .env в папке backend/ или в корне проекта
+    # (образец — .env.example). Если есть оба файла, важнее backend/.env.
+    # required: false — без .env сайт тоже запустится, но только с поиском, без ответов модели.
+    env_file:
+      - path: backend/.env
+        required: false
+      - path: .env
+        required: false
+    restart: unless-stopped
