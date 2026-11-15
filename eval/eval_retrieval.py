@@ -1,9 +1,9 @@
-"""Офлайн-проверка поиска (без API): находит ли поиск нужный документ.
+"""Офлайн-проверка поиска (без API): попадает ли к модели нужный документ и пункт.
 
-Для каждого из 18 демо-вопросов указан документ, на который ссылается
-эталонный ответ организаторов (из demo_output.csv). Считаем:
-- hit@5 по документам: нужный документ попал в топ-5 выдачи чанков;
-- для вопросов с известным пунктом — попал ли сам пункт в топ-8.
+Проверяется рабочий режим ассистента (LegalAssistant.retrieve): документы компании
+идут модели целиком, по законам работает поиск. Локально — только поиск по словам:
+эмбеддинги доступны через API, без ключа их нет.
+Для каждого вопроса указан документ и, где известен, пункт из эталонного ответа.
 """
 import csv
 import sys
@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from core.kb import load_chunks
-from core.search import HybridSearcher
+from core.pipeline import LegalAssistant
 from core.dialogue import parse_question
 
 # id вопроса -> (подстрока doc_id правильного документа, ожидаемый пункт или "")
@@ -59,70 +59,48 @@ EXTRA = [
 ]
 
 
-def main():
-    chunks = load_chunks(Path(__file__).resolve().parents[1] / "data/chunks.json")
-    searcher = HybridSearcher(chunks)  # локально: только BM25 + эвристики
+class _NoModel:
+    """Заглушка вместо клиента моделей: поиск по смыслу выключен, ответы не нужны."""
+    available = False
+    rerank_model = ""
 
-    with open(Path(__file__).resolve().parents[1] / "data/demo_questions.csv",
-              encoding="utf-8-sig") as f:
+
+def _has(results, doc: str, clause: str) -> tuple[bool, bool | None]:
+    hits = [c for c in results if doc in c.doc_id]
+    if not clause:
+        return bool(hits), None
+    # у длинного пункта чанки названы «п. 2, пп. 1» — засчитываем по началу метки
+    return bool(hits), any(c.clause == clause or c.clause.startswith(clause + ",") for c in hits)
+
+
+def main():
+    base = Path(__file__).resolve().parents[1]
+    assistant = LegalAssistant(load_chunks(base / "data/chunks.json"), llm=_NoModel())
+    with open(base / "data/demo_questions.csv", encoding="utf-8-sig") as f:
         questions = {r["id"]: r["question"] for r in csv.DictReader(f)}
 
-    doc_hits = clause_hits = clause_total = 0
-    applicable = 0
-    for qid, raw in questions.items():
-        expected_doc, expected_clause = EXPECTED[qid]
+    cases = [(f"[{qid:>2}]", raw, *EXPECTED[qid]) for qid, raw in questions.items()]
+    cases += [("[св]", q, doc, clause) for q, doc, clause in EXTRA]
+
+    doc_hits = doc_total = clause_hits = clause_total = 0
+    for tag, raw, doc, clause in cases:
         question, history = parse_question(raw)
-        query = question
-        if history:
-            query = " ".join(t["content"] for t in history[-2:]) + " " + question
-        results = searcher.search(query, top_k=8)
-
-        if expected_doc is None:
-            top_titles = {c.doc_title for c in results[:3]}
-            print(f"[{qid:>2}] (нет ответа в базе) топ-3: {sorted(top_titles)}")
+        results = assistant.retrieve(question, history)
+        if doc is None:
+            print(f"{tag} (ответа в базе нет — ждём отказ) {question[:60]}")
             continue
-        applicable += 1
-
-        top5_docs = [c.doc_id for c in results[:5]]
-        doc_ok = any(expected_doc in d for d in top5_docs)
+        doc_ok, clause_ok = _has(results, doc, clause)
+        doc_total += 1
         doc_hits += doc_ok
-
-        clause_ok = None
-        if expected_clause:
+        note = ""
+        if clause_ok is not None:
             clause_total += 1
-            clause_ok = any(expected_doc in c.doc_id and c.clause == expected_clause
-                            for c in results)
-            clause_hits += bool(clause_ok)
+            clause_hits += clause_ok
+            note = "  пункт: OK" if clause_ok else f"  пункт: НЕТ ({clause})"
+        print(f"{tag} {'OK  ' if doc_ok else 'НЕТ '} {question[:60]}  → {doc}{note}")
 
-        mark = "OK " if doc_ok else "MISS"
-        cl = "" if clause_ok is None else ("  пункт:OK" if clause_ok else f"  пункт:MISS({expected_clause})")
-        print(f"[{qid:>2}] {mark} ждём «{expected_doc}»{cl}")
-        if not doc_ok:
-            for c in results[:5]:
-                print(f"       got: {c.doc_title} {c.clause}")
-
-    print("\n--- свои вопросы по законам и документам ---")
-    for question, expected_doc, expected_clause in EXTRA:
-        results = searcher.search(question, top_k=8)
-        applicable += 1
-        doc_ok = any(expected_doc in c.doc_id for c in results[:5])
-        doc_hits += doc_ok
-        cl = ""
-        if expected_clause:
-            clause_total += 1
-            # у длинного пункта чанки названы «п. 2, пп. 1» — засчитываем по началу метки
-            ok = any(expected_doc in c.doc_id and
-                     (c.clause == expected_clause or c.clause.startswith(expected_clause + ","))
-                     for c in results)
-            clause_hits += ok
-            cl = "  пункт:OK" if ok else f"  пункт:MISS({expected_clause})"
-        print(f"{'OK ' if doc_ok else 'MISS'} {question[:70]}{cl}")
-        if not doc_ok or "MISS" in cl:
-            for c in results[:6]:
-                print(f"       got: {c.ref()}")
-
-    print(f"\nДокумент в топ-5: {doc_hits}/{applicable}")
-    print(f"Нужный пункт в топ-8: {clause_hits}/{clause_total}")
+    print(f"\nНужный документ у модели: {doc_hits}/{doc_total}")
+    print(f"Нужный пункт у модели: {clause_hits}/{clause_total}")
 
 
 if __name__ == "__main__":
