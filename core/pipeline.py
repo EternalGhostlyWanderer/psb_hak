@@ -97,6 +97,56 @@ def unsupported_numbers(answer: str, allowed_text: str) -> list[str]:
     return bad
 
 
+# ---------------- проверка ссылок на части статей ----------------
+
+# «ст. 59, п. 3», «ст. 164, п. 2, пп. 4», «ст. 9 ч. 2»
+_LAW_REF_RE = re.compile(
+    r"(ст\.\s*(\d+(?:\.\d+)?))(\s*,?\s*(п|ч)\.\s*(\d+(?:\.\d+)*)(?:\s*,?\s*пп\.\s*(\d+(?:\.\d+)*))?)")
+
+
+def law_clauses(chunks: list[Chunk]) -> dict[str, set[str]]:
+    """Номер статьи -> пункты/части, которые реально есть в базе."""
+    out: dict[str, set[str]] = {}
+    for c in chunks:
+        m = re.search(r"ст\. (\d+(?:\.\d+)?)", c.doc_title) if c.doc_type == "закон" else None
+        if m:
+            out.setdefault(m.group(1), set()).add(c.clause)
+    return out
+
+
+def fix_law_refs(answer: str, known: dict[str, set[str]]) -> tuple[str, list[str]]:
+    """Убирает из ответа выдуманные части статей: «ТК РФ, ст. 59, п. 3», когда части
+    статьи 59 в базе не пронумерованы. Ссылка на несуществующий пункт — выдуманный
+    факт (обнуляет балл), а «ТК РФ, ст. 59» остаётся верной ссылкой."""
+    removed: list[str] = []
+
+    def repl(m: re.Match) -> str:
+        article, kind, num, sub = m.group(2), m.group(4), m.group(5), m.group(6)
+        clauses = known.get(article)
+        if clauses is None:
+            return m.group(0)                      # статьи нет в базе — не наша забота здесь
+        label = f"{kind}. {num}"
+        ok = any(c == label or c.startswith(label + ",") for c in clauses)
+        if ok and sub:
+            ok = f"{label}, пп. {sub}" in clauses
+            if not ok:                             # пункт есть, подпункта нет — оставляем пункт
+                removed.append(m.group(0))
+                return f"{m.group(1)}, {label}"
+        if ok:
+            return m.group(0)
+        removed.append(m.group(0))
+        return m.group(1)
+
+    return _LAW_REF_RE.sub(repl, answer), removed
+
+
+def strip_markdown(text: str) -> str:
+    """Ответ — обычный текст: убираем **жирный**, заголовки и маркеры списков."""
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"(?m)^\s*#{1,6}\s*", "", text)
+    return text.replace("**", "")
+
+
 # ---------------- какие фрагменты реально процитированы ----------------
 
 def _mentioned_docs(answer_low: str, numbers: set[str], chunks: list[Chunk]) -> set[str]:
@@ -148,6 +198,7 @@ class LegalAssistant:
             self.company_chunks, search_chunks = [], chunks
         self.searcher = HybridSearcher(search_chunks, embed_fn=self.llm.embed if use_dense else None)
         self.dense_ready = self.searcher.build_dense_index()
+        self.law_clauses = law_clauses(chunks)
 
     # ---------- поиск ----------
 
@@ -254,6 +305,9 @@ class LegalAssistant:
         checked = self._verify(question, history, chunks, messages, draft, fast)
         t_verify = time.monotonic()
 
+        checked, bad_refs = fix_law_refs(strip_markdown(checked), self.law_clauses)
+        if bad_refs:
+            flags.append("bad_ref_removed")
         answer = " ".join(checked.split())    # одна строка: так требует формат CSV-сабмита
         if leaks_instructions(answer, RULES_TEXT):
             answer = LEAK_ANSWER              # модель начала пересказывать свои правила
