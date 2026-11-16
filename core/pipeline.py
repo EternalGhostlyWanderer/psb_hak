@@ -121,8 +121,24 @@ def _mentioned_docs(answer_low: str, numbers: set[str], chunks: list[Chunk]) -> 
             hit = any(w in title and w in answer_low for w in ("записк", "письм", "соглашени"))
         if hit:
             found.add(c.doc_id)
-    # Ответ не назвал документ явно — считаем источником самый релевантный.
-    return found or ({chunks[0].doc_id} if chunks else set())
+    if found:
+        return found
+    # Ответ не назвал документ явно («согласует финансовый директор (п. 2.3)»). Узнаём
+    # документ по двухуровневым номерам пунктов из ответа: «2.3», «3.2» есть не везде.
+    # Утратившую силу редакцию берём, только если в ответе есть её год.
+    scores: dict[str, int] = {}
+    for c in chunks:
+        no = re.search(r"\d+\.\d+(?:\.\d+)*", c.clause)
+        if no and no.group(0) in numbers:
+            scores[c.doc_id] = scores.get(c.doc_id, 0) + 1
+    old = {c.doc_id for c in chunks if c.status == "утратил силу"}
+    if "2023" not in numbers:
+        scores = {d: s for d, s in scores.items() if d not in old} or scores
+    if scores:
+        best = max(scores.values())
+        return {d for d, s in scores.items() if s == best}
+    # Совсем не узнали — самый релевантный фрагмент.
+    return {chunks[0].doc_id} if chunks else set()
 
 
 def _is_cited(c: Chunk, numbers: set[str], docs: set[str], best_plain: dict[str, str]) -> bool:
