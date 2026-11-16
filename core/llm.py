@@ -23,9 +23,6 @@ from .config import MIN_ANSWER_TOKENS
 # куда его писать; в сам журнал попадают только вид запроса и время, без ключей и текстов.
 log = logging.getLogger("la.llm")
 
-# Лимит токенов, с которым генерация точно работает на платформе (все прошлые сабмиты).
-SAFE_TOKENS = 2000
-
 _THINK_RE = re.compile(r"<think>.*?</think>", re.DOTALL)
 
 
@@ -70,14 +67,6 @@ def _env(*names: str, default: str = "") -> str:
     return default
 
 
-def _cut_to_sentence(text: str) -> str:
-    """Оборванный по лимиту ответ обрезаем до последнего законченного предложения."""
-    end = max(text.rfind(". "), text.rfind(".) "), text.rfind("! "), text.rfind("? "))
-    if text.rstrip().endswith((".", "!", "?", ")", "»")) or end < len(text) // 2:
-        return text
-    return text[:end + 1].strip()
-
-
 class LLMError(RuntimeError):
     """Модель недоступна или вернула мусор. Пайплайн ловит это и отвечает безопасно."""
 
@@ -107,14 +96,6 @@ class LLMClient:
         # По ним видно, на что уходит время прогона и хватает ли 20 минут.
         self._stats: dict[str, list[float]] = {}
         self._stats_lock = threading.Lock()
-        # Диагностика генерации: модель на платформе «думающая» — рассуждения тратят тот же
-        # лимит токенов, что и ответ. Считаем, сколько токенов уходит и как часто ответ
-        # обрывается по лимиту (finish_reason = length) или приходит пустым.
-        self.env_max_tokens = env_tokens
-        self._tokens_cap = 10 ** 6               # станет SAFE_TOKENS, если сервис отклонит большой лимит
-        self.diag = {"calls": 0, "empty": 0, "truncated": 0, "over_2000": 0, "with_usage": 0,
-                     "completion_tokens": 0, "reasoning_tokens": 0, "max_completion": 0,
-                     "with_reasoning": 0, "cap_rejected": 0}
 
     @property
     def available(self) -> bool:
@@ -234,82 +215,22 @@ class LLMClient:
             raise
         self._record(kind, started, True)
 
-    def _note_usage(self, data: dict, message: dict, finish: str, empty: bool) -> None:
-        usage = data.get("usage") or {}
-        completion = int(usage.get("completion_tokens") or 0)
-        details = usage.get("completion_tokens_details") or {}
-        reasoning = int(details.get("reasoning_tokens") or usage.get("reasoning_tokens") or 0)
-        has_reasoning = bool(reasoning or message.get("reasoning") or message.get("reasoning_content"))
-        with self._stats_lock:
-            d = self.diag
-            d["calls"] += 1
-            d["empty"] += int(empty)
-            d["truncated"] += int(finish == "length")
-            d["with_reasoning"] += int(has_reasoning)
-            if completion:
-                d["with_usage"] += 1
-                d["completion_tokens"] += completion
-                d["reasoning_tokens"] += reasoning
-                d["max_completion"] = max(d["max_completion"], completion)
-                d["over_2000"] += int(completion > 2000)
-
-    def diag_summary(self) -> str:
-        d = dict(self.diag)
-        n = d["with_usage"] or 1
-        return (f"генераций {d['calls']}, пустых {d['empty']}, оборвано по лимиту {d['truncated']}, "
-                f"с рассуждениями {d['with_reasoning']}, токенов ответа в среднем "
-                f"{d['completion_tokens'] // n} (из них рассуждения {d['reasoning_tokens'] // n}), "
-                f"максимум {d['max_completion']}, больше 2000 токенов: {d['over_2000']}; "
-                f"большой лимит отклонён: {'да' if d['cap_rejected'] else 'нет'}; "
-                f"MAX_TOKENS из окружения: {self.env_max_tokens or 'не задан'}, наш лимит: {self.max_tokens}")
-
-    def _chat(self, messages: list[dict], tokens: int) -> dict:
-        """Один запрос генерации. Если сервис отклонил большой max_tokens (ошибка 4xx) —
-        возвращаемся к лимиту 2000, с которым прошли все прошлые прогоны, и больше
-        большой лимит не просим: иначе каждый вопрос получил бы запасной ответ."""
-        tokens = min(tokens, self._tokens_cap)
-        payload = {"model": self.gen_model, "messages": messages,
-                   # 0 = без «творчества»: одинаковый вопрос даёт одинаковый ответ, меньше выдумок.
-                   "temperature": 0, "max_tokens": tokens}
-        try:
-            return self._post("/chat/completions", self.api_key, payload)
-        except LLMError as exc:
-            if tokens <= SAFE_TOKENS or not str(exc).startswith("HTTP 4"):
-                raise
-            self._tokens_cap = SAFE_TOKENS
-            self.diag["cap_rejected"] = 1
-            return self._post("/chat/completions", self.api_key, {**payload, "max_tokens": SAFE_TOKENS})
-
     def generate(self, messages: list[dict], max_tokens: int | None = None) -> str:
-        """Ответ модели. Если лимит токенов съели рассуждения (ответ пуст или оборван
-        на полуслове) — повторяем с удвоенным лимитом: оборванный ответ без ссылок
-        судья оценит ниже базового решения."""
         tokens = max_tokens or self.max_tokens
-        best = ""
         for _ in range(2):
+            data = self._post("/chat/completions", self.api_key, {
+                "model": self.gen_model, "messages": messages,
+                # 0 = без «творчества»: одинаковый вопрос даёт одинаковый ответ, меньше выдумок.
+                "temperature": 0, "max_tokens": tokens})
             try:
-                data = self._chat(messages, tokens)
-            except LLMError:
-                if best:
-                    break                     # повтор не удался — берём то, что есть
-                raise
-            try:
-                choice = data["choices"][0]
-                message = choice.get("message") or {}
-                content = message.get("content") or ""
-            except (KeyError, IndexError, TypeError, AttributeError) as exc:
+                content = data["choices"][0]["message"].get("content") or ""
+            except (KeyError, IndexError, TypeError) as exc:
                 raise LLMError(f"Неожиданный формат ответа модели: {exc}") from exc
-            finish = str(choice.get("finish_reason") or "")
             # Некоторые модели кладут рассуждения в <think>…</think> — в ответ они не нужны.
             content = visible_text(content).strip()
-            self._note_usage(data, message, finish, empty=not content)
-            if content and finish != "length":
-                return content
             if content:
-                best = content                # оборван по лимиту: пробуем получить целиком
-            tokens *= 2
-        if best:
-            return _cut_to_sentence(best)
+                return content
+            tokens *= 2     # пусто — скорее всего лимит съели рассуждения, даём больше
         raise LLMError("Модель дважды вернула пустой ответ")
 
     def embed(self, texts: list[str]) -> list[list[float]]:

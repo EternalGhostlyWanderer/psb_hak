@@ -159,7 +159,6 @@ def main() -> None:
           f"{time.monotonic() - START:.0f} c", flush=True)
     # Сводка попадёт в логи платформы: по ней видно, на что ушло время из 20 минут.
     print(f"Запросы к моделям — {llm.stats_summary()}", flush=True)
-    print(f"Генерация — {llm.diag_summary()}", flush=True)
     if not_done:
         # Зависшие запросы не ждём: файл уже записан, иначе получим тайм-аут платформы.
         print(f"Не успели: {len(not_done)} вопросов", file=sys.stderr, flush=True)
