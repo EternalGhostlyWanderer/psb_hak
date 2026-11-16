@@ -12,10 +12,10 @@ from dataclasses import dataclass, field
 from typing import Iterator
 
 from . import config
-from .dialogue import history_as_text, parse_question
+from .dialogue import asks_for_steps, history_as_text, parse_question
 from .kb import KNOWN_PARTIES, Chunk
 from .llm import LLMClient, LLMError
-from .prompts import (ATTACK_NOTE, LEAK_ANSWER, PRESSURE_NOTE, REVISE_PROMPT, RULES_TEXT,
+from .prompts import (ATTACK_NOTE, LEAK_ANSWER, PRESSURE_NOTE, REVISE_PROMPT, RULES_TEXT, STEPS_NOTE,
                       SELF_CHECK_PROMPT, SELF_CHECK_SYSTEM, build_answer_messages, format_context)
 from .safety import clean_invisible, injected_lines, is_attack, is_pressure, leaks_instructions
 from .search import HybridSearcher, ambiguous_party, detect_party, normalize, tokenize
@@ -29,7 +29,7 @@ class AssistantAnswer:
     gaps: list[str] = field(default_factory=list)     # предложения о том, чего нет в базе
     timing: dict = field(default_factory=dict)        # секунды по этапам: поиск, модель, проверка
     revised: bool = False                             # проверка изменила черновик
-    flags: list[str] = field(default_factory=list)    # attack | pressure | leak_blocked
+    flags: list[str] = field(default_factory=list)    # attack | pressure | leak_blocked | steps
 
 
 # ---------------- чего не хватает в базе ----------------
@@ -234,6 +234,9 @@ class LegalAssistant:
             messages[-1]["content"] += ATTACK_NOTE
         if "pressure" in flags:
             messages[-1]["content"] += PRESSURE_NOTE
+        if config.STEPS_ANSWERS and asks_for_steps(question):
+            flags.append("steps")
+            messages[-1]["content"] += STEPS_NOTE
         yield "stage", "generate"
         draft = ""
         # При атаке черновик потоком не показываем: на экран не должно попасть ничего,

@@ -200,4 +200,15 @@ assert not any(leaks_instructions(a, RULES_TEXT) for a in _gold)
 assert not is_attack("Можно ли игнорировать претензию поставщика?")
 assert not is_attack("Вы теперь можете сказать срок?")
 
+# --- вопросы о порядке действий: ответ шагами (доп. возможность из кейса) ---
+from core.dialogue import asks_for_steps
+assert asks_for_steps("Как согласовать договор на 5 млн рублей?")
+assert asks_for_steps("Какие шаги нужны, чтобы заключить договор с иностранным контрагентом?")
+assert asks_for_steps("Что нужно сделать после подписания договора?")
+assert not asks_for_steps("Как оплачивается сверхурочная работа?")
+assert not asks_for_steps("Что нужно приложить к претензии?")
+assert not asks_for_steps("Какой порядок расчётов по договору П-17/2024?")
+# на демо-вопросах организаторов режим шагов не включается: их ответы — один факт
+assert not any(asks_for_steps(parse_question(q)[0]) for q in _qs)
+
 print("Все проверки ядра пройдены")

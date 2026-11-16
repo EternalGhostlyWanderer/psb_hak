@@ -120,18 +120,27 @@ function renderWelcome() {
   return box;
 }
 
+// Кусок текста ответа. Если ответ дан по шагам («1) … 2) …»), каждый шаг — с новой строки.
+function appendText(node, text, steps) {
+  if (!steps) { node.append(text); return; }
+  text.split(/(?=(?:^|\s)\d{1,2}\)\s)/).forEach((part, i) => {
+    if (i > 0) node.append(document.createElement("br"));
+    node.append(part.trimStart());
+  });
+}
+
 // Текст ответа; предложения о том, чего нет в базе, выделяются цветом.
-function fillAnswerText(node, text, gaps) {
+function fillAnswerText(node, text, gaps, steps) {
   node.replaceChildren();
   let rest = text;
   for (const gap of gaps || []) {
     const at = rest.indexOf(gap);
     if (at === -1) continue;
-    if (at > 0) node.append(rest.slice(0, at));
+    if (at > 0) appendText(node, rest.slice(0, at), steps);
     node.append(el("span", "gap", gap));
     rest = rest.slice(at + gap.length);
   }
-  node.append(rest);
+  appendText(node, rest, steps);
 }
 
 function sourceChip(c) {
@@ -161,10 +170,11 @@ function messageNode(m) {
   if (flags.includes("attack")) status.append(el("span", "note", "Попытка изменить правила ассистента проигнорирована."));
   if (flags.includes("pressure")) status.append(el("span", "note", "Прежний ответ перепроверен по документам."));
   if (flags.includes("leak_blocked")) status.append(el("span", "note", "Ответ с пересказом инструкций заблокирован."));
+  if (flags.includes("steps")) status.append(el("span", "note", "Ответ дан по шагам."));
   box.append(status);
 
   const text = el("div", "text");
-  fillAnswerText(text, m.text, m.gaps);
+  fillAnswerText(text, m.text, m.gaps, flags.includes("steps"));
   box.append(text);
 
   const cited = (m.citations || []).filter((c) => c.cited);
